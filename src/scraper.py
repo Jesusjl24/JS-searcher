@@ -19,8 +19,13 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from webdriver_manager.chrome import ChromeDriverManager
 
-from config import SCRAPING_CONFIG, SELENIUM_CONFIG, JOBS_CSV_PATH
+from config import SCRAPING_CONFIG, SELENIUM_CONFIG, JOBS_CSV_PATH, ANTI_BLOCKING_CONFIG
 from src.utils import build_seek_url, random_delay, validate_max_jobs, clean_text
+from src.anti_blocking import (
+    AntiBlockingStrategy,
+    get_anti_blocking_chrome_options,
+    get_random_user_agent,
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -42,10 +47,13 @@ class ScrapingError(ScraperError):
 
 
 @contextmanager
-def get_chrome_driver():
+def get_chrome_driver(use_anti_blocking: bool = True):
     """
-    Context manager for Chrome WebDriver
+    Context manager for Chrome WebDriver with anti-blocking support
     Ensures proper cleanup even if errors occur
+
+    Args:
+        use_anti_blocking: Whether to use anti-blocking features
 
     Yields:
         WebDriver instance
@@ -55,31 +63,39 @@ def get_chrome_driver():
     """
     driver = None
     try:
-        chrome_options = Options()
+        # Use anti-blocking options if enabled
+        if use_anti_blocking and ANTI_BLOCKING_CONFIG["enabled"]:
+            logger.info("Using anti-blocking Chrome options")
+            chrome_options = get_anti_blocking_chrome_options(
+                headless=SELENIUM_CONFIG["headless"]
+            )
+        else:
+            # Fallback to standard config
+            chrome_options = Options()
 
-        # Configure options from config
-        if SELENIUM_CONFIG["headless"]:
-            chrome_options.add_argument("--headless")
+            # Configure options from config
+            if SELENIUM_CONFIG["headless"]:
+                chrome_options.add_argument("--headless")
 
-        if SELENIUM_CONFIG["no_sandbox"]:
-            chrome_options.add_argument("--no-sandbox")
+            if SELENIUM_CONFIG["no_sandbox"]:
+                chrome_options.add_argument("--no-sandbox")
 
-        if SELENIUM_CONFIG["disable_gpu"]:
-            chrome_options.add_argument("--disable-gpu")
+            if SELENIUM_CONFIG["disable_gpu"]:
+                chrome_options.add_argument("--disable-gpu")
 
-        if SELENIUM_CONFIG["disable_dev_shm"]:
-            chrome_options.add_argument("--disable-dev-shm-usage")
+            if SELENIUM_CONFIG["disable_dev_shm"]:
+                chrome_options.add_argument("--disable-dev-shm-usage")
 
-        # Anti-detection measures
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
+            # Anti-detection measures
+            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
 
-        # User agent
-        chrome_options.add_argument(f"user-agent={SELENIUM_CONFIG['user_agent']}")
+            # User agent
+            chrome_options.add_argument(f"user-agent={SELENIUM_CONFIG['user_agent']}")
 
-        # Window size
-        chrome_options.add_argument(f"--window-size={SELENIUM_CONFIG['window_size']}")
+            # Window size
+            chrome_options.add_argument(f"--window-size={SELENIUM_CONFIG['window_size']}")
 
         # Initialize driver
         logger.info("Initializing Chrome WebDriver...")
@@ -339,8 +355,20 @@ def scrape_seek_jobs(
 
     jobs_data = []
 
+    # Initialize anti-blocking strategy if enabled
+    anti_blocking = None
+    if ANTI_BLOCKING_CONFIG["enabled"]:
+        logger.info("Initializing anti-blocking strategy")
+        anti_blocking = AntiBlockingStrategy(
+            use_rate_limiting=ANTI_BLOCKING_CONFIG["use_rate_limiting"],
+            use_header_rotation=ANTI_BLOCKING_CONFIG["use_header_rotation"],
+            use_session_rotation=ANTI_BLOCKING_CONFIG["use_session_rotation"],
+            use_time_scheduling=ANTI_BLOCKING_CONFIG["use_time_scheduling"],
+            proxies=ANTI_BLOCKING_CONFIG["proxies"] if ANTI_BLOCKING_CONFIG["proxies"] else None
+        )
+
     try:
-        with get_chrome_driver() as driver:
+        with get_chrome_driver(use_anti_blocking=True) as driver:
             scraper = JobScraper(driver)
 
             # Fetch search results page
@@ -366,9 +394,12 @@ def scrape_seek_jobs(
                 if job_data:
                     jobs_data.append(job_data)
 
-                    # Rate limiting
+                    # Use anti-blocking rate limiting if enabled, otherwise use standard delay
                     if idx < len(job_cards):
-                        random_delay()
+                        if anti_blocking:
+                            anti_blocking.before_request()  # Smart delay with jitter
+                        else:
+                            random_delay()  # Fallback to standard delay
 
             logger.info(f"Successfully parsed {len(jobs_data)} jobs")
 
@@ -388,14 +419,17 @@ def scrape_seek_jobs(
             try:
                 logger.info(f"Fetching description {idx}/{len(jobs_data)}")
 
-                with get_chrome_driver() as driver:
+                with get_chrome_driver(use_anti_blocking=True) as driver:
                     scraper = JobScraper(driver)
                     full_desc = scraper.fetch_full_description(job['url'])
                     job['full_description'] = full_desc
 
-                # Rate limiting between description fetches
+                # Use anti-blocking rate limiting if enabled
                 if idx < len(jobs_data):
-                    random_delay()
+                    if anti_blocking:
+                        anti_blocking.before_request()  # Smart delay with jitter
+                    else:
+                        random_delay()  # Fallback to standard delay
 
             except Exception as e:
                 logger.error(f"Error fetching description for {job['title']}: {e}")

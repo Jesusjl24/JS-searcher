@@ -158,6 +158,102 @@ RESUME_CONFIG = {
 
 ---
 
+## 🛡️ Anti-Blocking Protection (NEW!)
+
+The scraper now includes **professional-grade anti-blocking** features to protect you from IP bans and rate limiting - all **100% FREE**!
+
+### Features Enabled by Default
+
+✅ **User Agent Rotation** - Randomly rotate between 12+ real browser user agents
+✅ **Request Header Randomization** - Mimic real browser headers
+✅ **Intelligent Rate Limiting** - Smart delays with jitter and human-like patterns
+✅ **Browser Fingerprint Randomization** - Random viewports and settings
+✅ **Session Rotation** - Automatically rotate sessions after N requests
+✅ **Exponential Backoff** - Smart retry logic for failed requests
+
+### Why This is Better Than Free Proxies
+
+**Free Proxies ❌**
+- Unreliable and slow
+- Often malicious
+- Short-lived
+- Can be blocked faster than your IP
+
+**Our Multi-Layer Strategy ✅**
+- Always available
+- No performance impact
+- More effective at avoiding blocks
+- No security risks
+
+### Configuration
+
+Edit `config.py` to customize:
+
+```python
+ANTI_BLOCKING_CONFIG = {
+    "enabled": True,  # Master switch
+    "use_rate_limiting": True,  # Smart delays
+    "use_header_rotation": True,  # Random headers
+    "use_session_rotation": True,  # Session management
+    "use_time_scheduling": False,  # Only scrape during business hours (optional)
+
+    # Rate limiting (seconds)
+    "rate_limit_base_delay": 2.0,  # Minimum delay
+    "rate_limit_max_delay": 5.0,   # Maximum delay
+    "rate_limit_jitter": True,      # Random variation
+    "rate_limit_human_like": True,  # Occasional longer pauses
+
+    # Session settings
+    "session_lifetime_requests": 10,  # Rotate after N requests
+
+    # Optional: Add proxies if you have them (not recommended for free proxies)
+    "proxies": [],  # Format: ["http://ip:port"]
+}
+```
+
+### How It Works
+
+1. **User Agent Rotation**: Each request uses a different browser signature
+2. **Smart Delays**: Variable delays between requests (2-5s base + human-like patterns)
+3. **Human-Like Behavior**:
+   - Every 5-10 requests: takes a longer break (5-15s)
+   - 5% chance of extended break (30-60s)
+   - Mimics someone reading job descriptions
+4. **Session Management**: Creates new browser session every 10 requests
+5. **Fingerprint Randomization**: Different viewport sizes and settings each time
+
+### Performance Impact
+
+- **Speed**: Slightly slower due to delays (by design!)
+- **Success Rate**: Much higher (fewer blocks)
+- **Recommendation**: Better to scrape 5 jobs safely than get blocked scraping 50
+
+### Adding Proxies (Optional)
+
+If you have access to **paid** proxy services, you can add them:
+
+```python
+# In config.py
+ANTI_BLOCKING_CONFIG = {
+    ...
+    "proxies": [
+        "http://proxy1.example.com:8080",
+        "http://proxy2.example.com:8080",
+    ]
+}
+```
+
+**Note**: We don't recommend free proxy lists - they're usually slower and less reliable than using no proxy.
+
+### Best Practices
+
+1. **Keep max_jobs low** (5-10) even with anti-blocking
+2. **Space out searches** - don't search every minute
+3. **Use business hours** - enable `use_time_scheduling` to only scrape 9 AM-6 PM
+4. **Be respectful** - SEEK provides a service, don't abuse it
+
+---
+
 ## 🧪 Testing
 
 Run the test suite:

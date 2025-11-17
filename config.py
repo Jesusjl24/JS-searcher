@@ -119,6 +119,34 @@ SCORE_COLORS = {
     "weak": "🔴",
 }
 
+# Anti-blocking configuration
+ANTI_BLOCKING_CONFIG = {
+    # Enable/disable anti-blocking features
+    "enabled": True,
+    "use_rate_limiting": True,
+    "use_header_rotation": True,
+    "use_session_rotation": True,
+    "use_time_scheduling": False,  # Optional: only scrape during business hours
+
+    # Rate limiting settings
+    "rate_limit_base_delay": 2.0,  # Minimum seconds between requests
+    "rate_limit_max_delay": 5.0,   # Maximum seconds between requests
+    "rate_limit_jitter": True,      # Add random variation
+    "rate_limit_human_like": True,  # Use human-like patterns (occasional pauses)
+
+    # Session rotation settings
+    "session_lifetime_requests": 10,  # Rotate session after N requests
+
+    # Proxy settings (optional - add your proxies here)
+    # Format: ["http://ip:port", "http://ip:port"]
+    "proxies": [],  # Empty = no proxies (recommended for free usage)
+
+    # Browser fingerprint randomization
+    "randomize_user_agent": True,
+    "randomize_viewport": True,
+    "randomize_headers": True,
+}
+
 # Logging configuration
 LOGGING_CONFIG = {
     "level": "INFO",
