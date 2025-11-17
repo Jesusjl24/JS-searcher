@@ -1,0 +1,7 @@
+pypdf2
+python-dotenv
+mistralai
+python-docx
+streamlit-modal
+pandas
+streamlit
