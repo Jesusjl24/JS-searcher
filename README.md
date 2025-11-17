@@ -1,0 +1,2 @@
+# JS-searcher
+Find opportunities
