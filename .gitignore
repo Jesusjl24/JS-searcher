@@ -70,3 +70,14 @@ tmp/
 # Resume uploads (if saved locally)
 uploads/
 resumes/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Convex
+.convex/
+convex/_generated/

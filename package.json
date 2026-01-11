@@ -1,0 +1,16 @@
+{
+  "name": "js-searcher",
+  "version": "2.0.0",
+  "description": "AI-powered job search application with Convex backend",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy"
+  },
+  "dependencies": {
+    "convex": "^1.16.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3"
+  }
+}
