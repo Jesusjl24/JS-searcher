@@ -1,381 +1,96 @@
-"""
-Utility functions for JS-searcher application
-Includes URL building, validation, logging setup, and helpers
-"""
+"""Shared utilities for Media Diet Diagnostic"""
 
 import logging
-import time
-import random
 import re
-from typing import Optional, Dict, List
-from urllib.parse import quote, urljoin
-from config import (
-    SCRAPING_CONFIG,
-    WORK_TYPE_MAP,
-    REMOTE_MAP,
-    DATE_MAP,
-    LOGGING_CONFIG,
-    SCORE_THRESHOLDS,
-    SCORE_COLORS,
-)
+from config import LOGGING_CONFIG, BIAS_LABELS, BIAS_COLORS
 
 
-def setup_logging(log_level: str = None, log_file: str = None) -> None:
-    """
-    Setup logging configuration for the application
-
-    Args:
-        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        log_file: Path to log file (optional)
-    """
-    level = log_level or LOGGING_CONFIG["level"]
-    log_format = LOGGING_CONFIG["format"]
-
-    # Configure root logger
+def setup_logging():
     logging.basicConfig(
-        level=getattr(logging, level),
-        format=log_format,
-        handlers=[
-            logging.StreamHandler(),  # Console output
-        ]
+        level=getattr(logging, LOGGING_CONFIG["level"]),
+        format=LOGGING_CONFIG["format"],
     )
 
-    # Add file handler if specified
-    if log_file or LOGGING_CONFIG.get("log_file"):
-        file_path = log_file or LOGGING_CONFIG["log_file"]
-        file_handler = logging.FileHandler(file_path)
-        file_handler.setFormatter(logging.Formatter(log_format))
-        logging.getLogger().addHandler(file_handler)
 
-    logging.info("Logging configured successfully")
+def get_bias_label(score: float) -> str:
+    for (low, high), label in BIAS_LABELS.items():
+        if low <= score <= high:
+            return label
+    return "Center"
 
 
-def sanitize_search_term(search_term: str) -> str:
+def get_bias_color(score: float) -> str:
+    label = get_bias_label(score)
+    return BIAS_COLORS.get(label, "#78909c")
+
+
+def parse_source_line(line: str) -> dict | None:
     """
-    Sanitize and format search term for URL
-
-    Args:
-        search_term: Raw search term from user
-
-    Returns:
-        Sanitized search term safe for URLs
+    Parse a single line of user input into a structured source dict.
+    Handles: @handle, r/subreddit, youtube.com/... URLs, plain names.
     """
-    if not search_term or not search_term.strip():
-        raise ValueError("Search term cannot be empty")
-
-    # Remove special characters except spaces and hyphens
-    sanitized = re.sub(r'[^\w\s-]', '', search_term)
-
-    # Replace spaces with hyphens
-    sanitized = re.sub(r'\s+', '-', sanitized.strip())
-
-    # Convert to lowercase
-    sanitized = sanitized.lower()
-
-    # Remove consecutive hyphens
-    sanitized = re.sub(r'-+', '-', sanitized)
-
-    # Remove leading/trailing hyphens
-    sanitized = sanitized.strip('-')
-
-    if not sanitized:
-        raise ValueError("Search term contains no valid characters")
-
-    logging.debug(f"Sanitized '{search_term}' to '{sanitized}'")
-    return sanitized
-
-
-def sanitize_location(location: str) -> str:
-    """
-    Sanitize and format location for URL
-
-    Args:
-        location: Raw location from user
-
-    Returns:
-        Sanitized location safe for URLs
-    """
-    if not location or not location.strip():
-        raise ValueError("Location cannot be empty")
-
-    # Similar sanitization as search term
-    sanitized = re.sub(r'[^\w\s-]', '', location)
-    sanitized = re.sub(r'\s+', '-', sanitized.strip())
-    sanitized = sanitized.lower()
-    sanitized = re.sub(r'-+', '-', sanitized)
-    sanitized = sanitized.strip('-')
-
-    if not sanitized:
-        raise ValueError("Location contains no valid characters")
-
-    logging.debug(f"Sanitized location '{location}' to '{sanitized}'")
-    return sanitized
-
-
-def build_seek_url(
-    search_term: str,
-    location: str,
-    work_type: Optional[str] = None,
-    remote_option: Optional[str] = None,
-    salary_min: Optional[int] = None,
-    date_posted: Optional[str] = None,
-    page: int = 1
-) -> str:
-    """
-    Build SEEK URL with filters
-
-    Args:
-        search_term: Job title to search for
-        location: Location to search in
-        work_type: Employment type filter
-        remote_option: Remote work filter
-        salary_min: Minimum salary filter
-        date_posted: Date posted filter
-        page: Page number for pagination
-
-    Returns:
-        Complete SEEK URL with filters
-    """
-    # Sanitize inputs
-    formatted_search = sanitize_search_term(search_term)
-    formatted_location = sanitize_location(location)
-
-    # Build base URL
-    base_url = SCRAPING_CONFIG["base_url"]
-    search_url = f"{base_url}/{formatted_search}-jobs/in-{formatted_location}"
-
-    # Build query parameters
-    params = []
-
-    # Work type filter
-    if work_type and work_type.lower() in WORK_TYPE_MAP:
-        params.append(WORK_TYPE_MAP[work_type.lower()])
-
-    # Remote option filter
-    if remote_option and remote_option.lower() in REMOTE_MAP:
-        params.append(REMOTE_MAP[remote_option.lower()])
-
-    # Salary filter
-    if salary_min and isinstance(salary_min, int) and salary_min > 0:
-        params.append(f"salarytype=annual&salaryrange={salary_min}-")
-
-    # Date posted filter
-    if date_posted:
-        if date_posted.lower() == "today":
-            params.append("daterange=1")
-        elif date_posted.isdigit():
-            params.append(f"daterange={date_posted}")
-
-    # Pagination
-    if page > 1:
-        params.append(f"page={page}")
-
-    # Combine URL with parameters
-    if params:
-        search_url += "?" + "&".join(params)
-
-    logging.info(f"Built URL: {search_url}")
-    return search_url
-
-
-def random_delay(min_seconds: float = None, max_seconds: float = None) -> None:
-    """
-    Add a random delay to avoid rate limiting
-
-    Args:
-        min_seconds: Minimum delay in seconds
-        max_seconds: Maximum delay in seconds
-    """
-    min_delay = min_seconds or SCRAPING_CONFIG["request_delay_min"]
-    max_delay = max_seconds or SCRAPING_CONFIG["request_delay_max"]
-
-    delay = random.uniform(min_delay, max_delay)
-    logging.debug(f"Waiting {delay:.2f} seconds...")
-    time.sleep(delay)
-
-
-def validate_max_jobs(max_jobs: int) -> int:
-    """
-    Validate and constrain max_jobs parameter
-
-    Args:
-        max_jobs: Requested maximum number of jobs
-
-    Returns:
-        Validated max_jobs value
-
-    Raises:
-        ValueError: If max_jobs is invalid
-    """
-    if not isinstance(max_jobs, int):
-        raise ValueError(f"max_jobs must be an integer, got {type(max_jobs)}")
-
-    if max_jobs < 1:
-        raise ValueError("max_jobs must be at least 1")
-
-    if max_jobs > SCRAPING_CONFIG["max_jobs_limit"]:
-        logging.warning(
-            f"max_jobs ({max_jobs}) exceeds limit ({SCRAPING_CONFIG['max_jobs_limit']}), "
-            f"using limit instead"
-        )
-        return SCRAPING_CONFIG["max_jobs_limit"]
-
-    return max_jobs
-
-
-def get_score_color(score: int) -> str:
-    """
-    Get color emoji for match score
-
-    Args:
-        score: Match score (0-100)
-
-    Returns:
-        Color emoji
-    """
-    if score >= SCORE_THRESHOLDS["strong_match"]:
-        return SCORE_COLORS["strong"]
-    elif score >= SCORE_THRESHOLDS["good_match"]:
-        return SCORE_COLORS["good"]
-    elif score >= SCORE_THRESHOLDS["moderate_match"]:
-        return SCORE_COLORS["moderate"]
-    else:
-        return SCORE_COLORS["weak"]
-
-
-def get_recommendation_from_score(score: int) -> str:
-    """
-    Get recommendation text based on score
-
-    Args:
-        score: Match score (0-100)
-
-    Returns:
-        Recommendation text
-    """
-    if score >= SCORE_THRESHOLDS["strong_match"]:
-        return "Strong Match"
-    elif score >= SCORE_THRESHOLDS["good_match"]:
-        return "Good Match"
-    elif score >= SCORE_THRESHOLDS["moderate_match"]:
-        return "Moderate Match"
-    else:
-        return "Weak Match"
-
-
-def parse_salary_filter(salary_str: str) -> Optional[int]:
-    """
-    Parse salary filter string to integer
-
-    Args:
-        salary_str: Salary string like "80K+" or "Any"
-
-    Returns:
-        Salary as integer or None
-    """
-    if not salary_str or salary_str == "Any":
+    line = line.strip()
+    if not line or line.startswith("#"):
         return None
 
-    try:
-        # Remove "K+" and convert to full number
-        salary_num = int(salary_str.replace("K+", "")) * 1000
-        return salary_num
-    except (ValueError, AttributeError):
-        logging.warning(f"Could not parse salary: {salary_str}")
-        return None
+    source = {"raw": line, "platform": "unknown", "name": line}
+
+    # Reddit subreddit
+    reddit_match = re.match(r"(?:https?://(?:www\.)?reddit\.com)?/?r/(\w+)", line, re.I)
+    if reddit_match:
+        source["platform"] = "reddit"
+        source["name"] = f"r/{reddit_match.group(1)}"
+        source["handle"] = reddit_match.group(1)
+        return source
+
+    # Twitter/X @handle
+    if re.match(r"^@\w+$", line):
+        source["platform"] = "twitter"
+        source["name"] = line
+        source["handle"] = line.lstrip("@")
+        return source
+
+    # Twitter/X URL
+    twitter_url = re.match(r"https?://(?:www\.)?(?:twitter|x)\.com/(\w+)", line, re.I)
+    if twitter_url:
+        source["platform"] = "twitter"
+        source["name"] = f"@{twitter_url.group(1)}"
+        source["handle"] = twitter_url.group(1)
+        return source
+
+    # YouTube URL or channel
+    if "youtube.com" in line.lower() or "youtu.be" in line.lower():
+        source["platform"] = "youtube"
+        yt_match = re.search(r"(?:channel/|@|c/)([^/?&\s]+)", line, re.I)
+        if yt_match:
+            source["name"] = yt_match.group(1)
+            source["handle"] = yt_match.group(1)
+        return source
+
+    # Generic URL → website/news source
+    if re.match(r"https?://", line, re.I):
+        source["platform"] = "website"
+        domain = re.search(r"https?://(?:www\.)?([^/\s]+)", line, re.I)
+        if domain:
+            source["name"] = domain.group(1)
+        return source
+
+    # Bare subreddit: starts with r/
+    if line.lower().startswith("r/"):
+        source["platform"] = "reddit"
+        source["name"] = line
+        source["handle"] = line[2:]
+        return source
+
+    # Everything else treated as a name/keyword
+    return source
 
 
-def format_active_filters(
-    work_type: str,
-    remote_option: str,
-    salary_filter: str,
-    date_posted: str
-) -> List[str]:
-    """
-    Format active filters for display
-
-    Args:
-        work_type: Selected work type
-        remote_option: Selected remote option
-        salary_filter: Selected salary filter
-        date_posted: Selected date filter
-
-    Returns:
-        List of formatted filter strings
-    """
-    active_filters = []
-
-    if work_type and work_type != "Any":
-        active_filters.append(f"📋 {work_type}")
-
-    if remote_option and remote_option != "Any":
-        active_filters.append(f"🏠 {remote_option}")
-
-    if salary_filter and salary_filter != "Any":
-        active_filters.append(f"💰 {salary_filter}")
-
-    if date_posted and date_posted != "Any time":
-        active_filters.append(f"📅 {date_posted}")
-
-    return active_filters
-
-
-def truncate_text(text: str, max_length: int, suffix: str = "...") -> str:
-    """
-    Truncate text to maximum length with suffix
-
-    Args:
-        text: Text to truncate
-        max_length: Maximum length
-        suffix: Suffix to add if truncated
-
-    Returns:
-        Truncated text
-    """
-    if not text or len(text) <= max_length:
-        return text
-
-    return text[:max_length - len(suffix)] + suffix
-
-
-def clean_text(text: str) -> str:
-    """
-    Clean text by removing extra whitespace and special characters
-
-    Args:
-        text: Text to clean
-
-    Returns:
-        Cleaned text
-    """
-    if not text:
-        return ""
-
-    # Replace multiple spaces/newlines with single space
-    cleaned = re.sub(r'\s+', ' ', text)
-
-    # Remove leading/trailing whitespace
-    cleaned = cleaned.strip()
-
-    return cleaned
-
-
-def is_valid_url(url: str) -> bool:
-    """
-    Validate URL format
-
-    Args:
-        url: URL to validate
-
-    Returns:
-        True if valid URL, False otherwise
-    """
-    url_pattern = re.compile(
-        r'^https?://'  # http:// or https://
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain...
-        r'localhost|'  # localhost...
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
-        r'(?::\d+)?'  # optional port
-        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-
-    return url_pattern.match(url) is not None
+def parse_sources_text(text: str) -> list[dict]:
+    """Parse multi-line user input into a list of source dicts."""
+    sources = []
+    for line in text.splitlines():
+        parsed = parse_source_line(line)
+        if parsed:
+            sources.append(parsed)
+    return sources
